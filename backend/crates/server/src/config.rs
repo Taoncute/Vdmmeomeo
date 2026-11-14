@@ -1,0 +1,93 @@
+use std::fmt::Display;
+use std::str::FromStr;
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub app_env: String,
+    pub database_url: String,
+    pub bind_addr: String,
+    pub jwt_secret: String,
+    pub access_ttl_secs: i64,
+    pub refresh_ttl_days: i64,
+    pub cookie_secure: bool,
+    pub cors_origins: Vec<String>,
+    pub trust_proxy: bool,
+    pub rate_limit_ip_per_min: u32,
+    pub rate_limit_auth_per_min: u32,
+    pub rate_limit_user_per_min: u32,
+    pub argon2_m_kib: u32,
+    pub argon2_t: u32,
+    pub log_json: bool,
+}
+
+fn env_or(key: &str, default: &str) -> String {
+    std::env::var(key).unwrap_or_else(|_| default.to_string())
+}
+
+fn env_parse<T>(key: &str, default: T) -> anyhow::Result<T>
+where
+    T: FromStr,
+    T::Err: Display,
+{
+    match std::env::var(key) {
+        Ok(v) => v
+            .parse::<T>()
+            .map_err(|e| anyhow::anyhow!("Biến môi trường {key} không hợp lệ: {e}")),
+        Err(_) => Ok(default),
+    }
+}
+
+impl Config {
+    pub fn from_env() -> anyhow::Result<Self> {
+        let database_url = std::env::var("DATABASE_URL")
+            .map_err(|_| anyhow::anyhow!("Thiếu biến môi trường DATABASE_URL"))?;
+        let jwt_secret = std::env::var("JWT_SECRET")
+            .map_err(|_| anyhow::anyhow!("Thiếu biến môi trường JWT_SECRET (ít nhất 32 ký tự)"))?;
+        if jwt_secret.len() < 32 {
+            anyhow::bail!("JWT_SECRET phải dài ít nhất 32 ký tự");
+        }
+        let cors_origins = env_or("CORS_ORIGINS", "http://localhost:5173")
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        Ok(Self {
+            app_env: env_or("APP_ENV", "development"),
+            database_url,
+            bind_addr: env_or("BIND_ADDR", "0.0.0.0:8080"),
+            jwt_secret,
+            access_ttl_secs: env_parse("ACCESS_TTL_SECS", 900)?,
+            refresh_ttl_days: env_parse("REFRESH_TTL_DAYS", 30)?,
+            cookie_secure: env_parse("COOKIE_SECURE", false)?,
+            cors_origins,
+            trust_proxy: env_parse("TRUST_PROXY", false)?,
+            rate_limit_ip_per_min: env_parse("RATE_LIMIT_IP_PER_MIN", 300)?,
+            rate_limit_auth_per_min: env_parse("RATE_LIMIT_AUTH_PER_MIN", 20)?,
+            rate_limit_user_per_min: env_parse("RATE_LIMIT_USER_PER_MIN", 600)?,
+            argon2_m_kib: env_parse("ARGON2_M_KIB", 19456)?,
+            argon2_t: env_parse("ARGON2_T", 2)?,
+            log_json: env_parse("LOG_JSON", false)?,
+        })
+    }
+
+    /// Cấu hình cho test: giới hạn tốc độ rất cao, argon2 nhẹ để test chạy nhanh.
+    pub fn for_tests() -> Self {
+        Self {
+            app_env: "test".to_string(),
+            database_url: String::new(),
+            bind_addr: "127.0.0.1:0".to_string(),
+            jwt_secret: "test-secret-test-secret-test-secret-0123".to_string(),
+            access_ttl_secs: 900,
+            refresh_ttl_days: 30,
+            cookie_secure: false,
+            cors_origins: vec!["http://localhost:5173".to_string()],
+            trust_proxy: false,
+            rate_limit_ip_per_min: 1_000_000,
+            rate_limit_auth_per_min: 1_000_000,
+            rate_limit_user_per_min: 1_000_000,
+            argon2_m_kib: 8,
+            argon2_t: 1,
+            log_json: false,
+        }
+    }
+}
