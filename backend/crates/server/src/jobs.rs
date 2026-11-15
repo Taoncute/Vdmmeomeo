@@ -7,13 +7,18 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
+use crate::domain::{escrow, notifications};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
 const MAX_ATTEMPTS: i32 = 5;
 
 /// Job lặp lại: (loại, chu kỳ tính bằng giây). Sau mỗi lần chạy, job kế tiếp được xếp lịch.
-pub const RECURRING: &[(&str, i64)] = &[];
+pub const RECURRING: &[(&str, i64)] = &[
+    ("release_holds", 300),
+    ("rent_reminders", 3600),
+    ("ledger_reconcile", 3600),
+];
 
 pub async fn enqueue(
     db: &PgPool,
@@ -43,9 +48,36 @@ pub async fn ensure_recurring(db: &PgPool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-async fn dispatch(_state: &AppState, kind: &str, _payload: &Value) -> AppResult<()> {
+async fn dispatch(state: &AppState, kind: &str, _payload: &Value) -> AppResult<()> {
     match kind {
         "noop" => Ok(()),
+        // Nhả doanh thu đang giữ đã đến hạn: earnings_pending -> earnings_available.
+        "release_holds" => {
+            let n = escrow::release_due(&state.db, 500).await?;
+            if n > 0 {
+                tracing::info!(released = n, "đã nhả doanh thu đang giữ");
+            }
+            Ok(())
+        }
+        // Nhắc người bán có gian hàng sắp hết hạn.
+        "rent_reminders" => {
+            let n = notifications::create_stall_reminders(&state.db).await?;
+            if n > 0 {
+                tracing::info!(created = n, "đã tạo nhắc gia hạn gian hàng");
+            }
+            Ok(())
+        }
+        // Đối soát toàn sổ cái mỗi giờ; lệch thì job báo lỗi (hiện ở log và cột last_error).
+        "ledger_reconcile" => {
+            let mut conn = state.db.acquire().await?;
+            let report = ledger::store::verify_books(&mut conn).await?;
+            if report.is_clean() {
+                Ok(())
+            } else {
+                tracing::error!(report = ?report, "SỔ CÁI KHÔNG KHỚP");
+                Err(AppError::internal(format!("sổ cái không khớp: {report:?}")))
+            }
+        }
         other => Err(AppError::internal(format!("Không biết loại job: {other}"))),
     }
 }

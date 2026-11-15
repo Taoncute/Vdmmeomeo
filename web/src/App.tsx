@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, jsonBody, setAccessToken } from "./lib/api";
+import AdminPage from "./pages/AdminPage";
 
 interface User {
   id: string;
@@ -27,6 +28,19 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lỗi không xác định");
     }
+  }
+
+  async function logout() {
+    try {
+      await api("/auth/logout", { method: "POST" });
+    } finally {
+      setAccessToken(null);
+      setUser(null);
+    }
+  }
+
+  if (user && user.roles.includes("admin")) {
+    return <AdminPage onLogout={() => void logout()} />;
   }
 
   if (user) {

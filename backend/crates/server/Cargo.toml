@@ -5,15 +5,20 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+aes-gcm = "0.10"
 anyhow = "1"
 argon2 = "0.5"
+async-trait = "0.1"
 axum = "0.7"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
 hex = "0.4"
+hmac = "0.12"
 jsonwebtoken = "9"
+ledger = { path = "../ledger" }
 rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -31,8 +36,10 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "tim
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+unicode-normalization = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }
 validator = { version = "0.18", features = ["derive"] }
 
 [dev-dependencies]
+proptest = "1"
 tower = { version = "0.4", features = ["util"] }

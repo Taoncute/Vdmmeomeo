@@ -167,3 +167,116 @@ pub async fn register_admin(app: &Router, pool: &PgPool, email: &str) -> Session
     grant_role(pool, s.user_id, "admin").await;
     s
 }
+
+// ---------- Helper cho test nghiệp vụ tiền (phase 2) ----------
+
+use ledger::{kinds, AccountKey, TxBuilder};
+use server::crypto::KycCrypto;
+use server::domain::AdminCtx;
+
+pub fn admin_ctx(admin_id: Uuid) -> AdminCtx<'static> {
+    AdminCtx {
+        admin_id,
+        ip: "127.0.0.1",
+    }
+}
+
+/// Tạo người dùng trực tiếp trong DB (không qua HTTP), mật khẩu không dùng được để đăng nhập.
+pub async fn create_user(pool: &PgPool, email: &str) -> Uuid {
+    sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', 'Người thử') \
+         RETURNING id",
+    )
+    .bind(email)
+    .fetch_one(pool)
+    .await
+    .expect("tạo user")
+}
+
+pub async fn create_admin(pool: &PgPool, email: &str) -> Uuid {
+    let id = create_user(pool, email).await;
+    grant_role(pool, id, "admin").await;
+    id
+}
+
+/// Nạp số dư thật qua sổ cái: `external` -> `key`.
+pub async fn fund(pool: &PgPool, key: AccountKey, amount: i64) {
+    let tx = TxBuilder::new(kinds::SEED, format!("test-fund:{}", Uuid::new_v4()))
+        .debit(AccountKey::external(), amount)
+        .credit(key, amount)
+        .build()
+        .expect("dựng giao dịch");
+    let mut db_tx = pool.begin().await.expect("begin");
+    ledger::post(&mut db_tx, &tx).await.expect("post");
+    db_tx.commit().await.expect("commit");
+}
+
+pub async fn balance(pool: &PgPool, key: AccountKey) -> i64 {
+    let mut conn = pool.acquire().await.expect("acquire");
+    ledger::store::balance_of(&mut conn, &key)
+        .await
+        .expect("balance_of")
+}
+
+/// Sổ cái phải sạch: tổng 0, từng giao dịch cân, balance khớp tổng bút toán, không ví nào âm.
+pub async fn assert_books_clean(pool: &PgPool) {
+    let mut conn = pool.acquire().await.expect("acquire");
+    let report = ledger::store::verify_books(&mut conn)
+        .await
+        .expect("verify_books");
+    assert!(report.is_clean(), "sổ cái lệch: {report:?}");
+}
+
+/// Đặt trạng thái KYC trực tiếp bằng SQL (số tài khoản mã hóa thật).
+pub async fn set_kyc(pool: &PgPool, user_id: Uuid, status: &str) {
+    let (enc, key_id) = KycCrypto::for_tests()
+        .encrypt("0123456789")
+        .expect("mã hóa");
+    sqlx::query(
+        "INSERT INTO seller_kyc (user_id, full_name, bank_name, account_no_enc, key_id, status) \
+         VALUES ($1, 'Nguyễn Văn A', 'Vietcombank', $2, $3, $4) \
+         ON CONFLICT (user_id) DO UPDATE SET status = EXCLUDED.status",
+    )
+    .bind(user_id)
+    .bind(enc)
+    .bind(key_id)
+    .bind(status)
+    .execute(pool)
+    .await
+    .expect("đặt KYC");
+}
+
+pub async fn set_setting(pool: &PgPool, key: &str, value: Value) {
+    sqlx::query("UPDATE settings SET value = $2 WHERE key = $1")
+        .bind(key)
+        .bind(value)
+        .execute(pool)
+        .await
+        .expect("đặt setting");
+}
+
+pub async fn count(pool: &PgPool, sql: &str) -> i64 {
+    sqlx::query_scalar::<_, i64>(sql)
+        .fetch_one(pool)
+        .await
+        .expect("đếm")
+}
+
+/// Pool lớn hơn trên cùng database test, để chạy nhiều kết nối đồng thời.
+pub async fn big_pool(pool: &PgPool) -> PgPool {
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(24)
+        .connect_with(pool.connect_options().as_ref().clone())
+        .await
+        .expect("tạo pool lớn")
+}
+
+pub async fn post_raw(app: &Router, uri: &str, body: Vec<u8>) -> Resp {
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body))
+        .expect("request");
+    send(app, req).await
+}

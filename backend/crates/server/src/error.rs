@@ -134,6 +134,28 @@ impl From<validator::ValidationErrors> for AppError {
     }
 }
 
+impl From<ledger::LedgerError> for AppError {
+    fn from(e: ledger::LedgerError) -> Self {
+        match e {
+            ledger::LedgerError::InsufficientFunds {
+                balance, needed, ..
+            } => AppError::unprocessable(
+                "insufficient_funds",
+                format!(
+                    "Không đủ số dư: hiện có {}, cần {}.",
+                    crate::util::format_vnd(balance),
+                    crate::util::format_vnd(needed)
+                ),
+            ),
+            ledger::LedgerError::InvalidAmount => {
+                AppError::bad_request("invalid_amount", "Số tiền không hợp lệ.")
+            }
+            ledger::LedgerError::Database(db) => AppError::from(db),
+            other => AppError::internal(other),
+        }
+    }
+}
+
 fn db_code(e: &sqlx::Error) -> Option<String> {
     e.as_database_error()
         .and_then(|d| d.code())

@@ -18,6 +18,20 @@ pub struct Config {
     pub argon2_m_kib: u32,
     pub argon2_t: u32,
     pub log_json: bool,
+    /// `manual` (mặc định), `payos` hoặc `fake` (chỉ dev/test).
+    pub payment_gateway: String,
+    pub payos_client_id: String,
+    pub payos_api_key: String,
+    pub payos_checksum_key: String,
+    pub payos_base_url: String,
+    pub payos_return_url: String,
+    pub payos_cancel_url: String,
+    pub manual_bank_name: String,
+    pub manual_account_no: String,
+    pub manual_account_name: String,
+    /// Khóa mã hóa KYC: `id:base64(32 byte)`, nhiều khóa cách nhau bằng dấu phẩy.
+    pub kyc_keys: String,
+    pub kyc_active_key: String,
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -67,6 +81,18 @@ impl Config {
             argon2_m_kib: env_parse("ARGON2_M_KIB", 19456)?,
             argon2_t: env_parse("ARGON2_T", 2)?,
             log_json: env_parse("LOG_JSON", false)?,
+            payment_gateway: env_or("PAYMENT_GATEWAY", "manual"),
+            payos_client_id: env_or("PAYOS_CLIENT_ID", ""),
+            payos_api_key: env_or("PAYOS_API_KEY", ""),
+            payos_checksum_key: env_or("PAYOS_CHECKSUM_KEY", ""),
+            payos_base_url: env_or("PAYOS_BASE_URL", "https://api-merchant.payos.vn"),
+            payos_return_url: env_or("PAYOS_RETURN_URL", "http://localhost:5173/wallet"),
+            payos_cancel_url: env_or("PAYOS_CANCEL_URL", "http://localhost:5173/wallet"),
+            manual_bank_name: env_or("MANUAL_BANK_NAME", "Ngân hàng (chưa cấu hình)"),
+            manual_account_no: env_or("MANUAL_ACCOUNT_NO", "0000000000"),
+            manual_account_name: env_or("MANUAL_ACCOUNT_NAME", "CHU SAN (CHUA CAU HINH)"),
+            kyc_keys: env_or("KYC_KEYS", ""),
+            kyc_active_key: env_or("KYC_ACTIVE_KEY", ""),
         })
     }
 
@@ -88,6 +114,18 @@ impl Config {
             argon2_m_kib: 8,
             argon2_t: 1,
             log_json: false,
+            payment_gateway: "manual".to_string(),
+            payos_client_id: "test-client".to_string(),
+            payos_api_key: "test-key".to_string(),
+            payos_checksum_key: crate::payments::payos::TEST_CHECKSUM_KEY.to_string(),
+            payos_base_url: "http://127.0.0.1:1".to_string(),
+            payos_return_url: "http://localhost/return".to_string(),
+            payos_cancel_url: "http://localhost/cancel".to_string(),
+            manual_bank_name: "Ngân hàng thử".to_string(),
+            manual_account_no: "123456789".to_string(),
+            manual_account_name: "CHU SAN THU".to_string(),
+            kyc_keys: String::new(),
+            kyc_active_key: String::new(),
         }
     }
 }

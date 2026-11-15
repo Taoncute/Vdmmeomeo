@@ -1,14 +1,27 @@
 use axum::extract::State;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::api::auth::UserDto;
 use crate::auth::{load_auth_user, AuthUser};
+use crate::domain::stall::{self, Shop};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-pub async fn get_me(user: AuthUser) -> Json<UserDto> {
-    Json(UserDto::from(&user))
+#[derive(Debug, Serialize)]
+pub struct MeResponse {
+    #[serde(flatten)]
+    pub user: UserDto,
+    /// Gian hàng của người dùng (nếu đã từng thuê).
+    pub shop: Option<Shop>,
+}
+
+pub async fn get_me(State(state): State<AppState>, user: AuthUser) -> AppResult<Json<MeResponse>> {
+    let shop = stall::shop_of_owner(&state.db, user.id).await?;
+    Ok(Json(MeResponse {
+        user: UserDto::from(&user),
+        shop,
+    }))
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,20 +1,51 @@
 use std::time::Duration;
 
-use axum::http::{header, HeaderName, HeaderValue, Method};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method};
 use axum::middleware;
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::Router;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
+use crate::error::{AppError, AppResult};
 use crate::ratelimit::rate_limit_mw;
 use crate::state::AppState;
 
 pub mod admin;
 pub mod auth;
+pub mod deposits;
 pub mod health;
+pub mod kyc;
 pub mod me;
+pub mod notifications;
+pub mod stall;
+pub mod wallet;
+pub mod withdrawals;
+
+/// Đọc header `Idempotency-Key` (tối đa 64 ký tự: chữ, số, `-`, `_`).
+pub fn idempotency_key(headers: &HeaderMap) -> AppResult<Option<String>> {
+    let Some(raw) = headers.get("idempotency-key") else {
+        return Ok(None);
+    };
+    let invalid = || {
+        AppError::bad_request(
+            "invalid_idempotency_key",
+            "Idempotency-Key phải dài 1 đến 64 ký tự gồm chữ, số, '-' hoặc '_'.",
+        )
+    };
+    let key = raw.to_str().map_err(|_| invalid())?.trim();
+    let ok = !key.is_empty()
+        && key.len() <= 64
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if ok {
+        Ok(Some(key.to_string()))
+    } else {
+        Err(invalid())
+    }
+}
 
 fn v1_routes() -> Router<AppState> {
     Router::new()
@@ -25,10 +56,42 @@ fn v1_routes() -> Router<AppState> {
         .route("/auth/refresh", post(auth::refresh))
         .route("/auth/logout", post(auth::logout))
         .route("/me", get(me::get_me).patch(me::patch_me))
+        .route("/me/kyc", get(kyc::get).post(kyc::submit))
+        .route("/wallet", get(wallet::get_wallet))
+        .route("/wallet/entries", get(wallet::get_entries))
+        .route(
+            "/deposits",
+            get(deposits::list_deposits).post(deposits::create_deposit),
+        )
+        .route("/webhooks/payos", post(deposits::payment_webhook))
+        .route("/withdrawals", get(withdrawals::list).post(withdrawals::create))
+        .route("/withdrawals/preview", post(withdrawals::preview))
+        .route("/stall/rent", post(stall::rent))
+        .route("/shops/me", patch(stall::patch_my_shop))
+        .route("/notifications", get(notifications::list))
         .route(
             "/admin/settings",
             get(admin::get_settings).patch(admin::patch_settings),
         )
+        .route("/admin/deposits", get(admin::list_deposits))
+        .route("/admin/deposits/:id/confirm", post(admin::confirm_deposit))
+        .route("/admin/withdrawals", get(admin::list_withdrawals))
+        .route(
+            "/admin/withdrawals/:id/approve",
+            post(admin::approve_withdrawal),
+        )
+        .route(
+            "/admin/withdrawals/:id/reject",
+            post(admin::reject_withdrawal),
+        )
+        .route("/admin/kyc", get(admin::list_kyc))
+        .route("/admin/kyc/:id/approve", post(admin::approve_kyc))
+        .route("/admin/kyc/:id/reject", post(admin::reject_kyc))
+        .route(
+            "/admin/users/:id/refund-deposit",
+            post(admin::refund_deposit),
+        )
+        .route("/admin/audit-log", get(admin::audit_log))
 }
 
 pub fn router(state: AppState) -> Router {
