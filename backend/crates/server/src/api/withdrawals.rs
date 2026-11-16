@@ -20,7 +20,9 @@ pub async fn preview(
     user: AuthUser,
     Json(req): Json<AmountRequest>,
 ) -> AppResult<Json<withdrawals::Preview>> {
-    Ok(Json(withdrawals::preview(&state.db, user.id, req.amount).await?))
+    Ok(Json(
+        withdrawals::preview(&state.db, user.id, req.amount).await?,
+    ))
 }
 
 pub async fn create(

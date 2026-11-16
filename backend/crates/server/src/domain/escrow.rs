@@ -47,11 +47,14 @@ pub async fn complete(
     order_id: Uuid,
     amount: i64,
 ) -> AppResult<PostOutcome> {
-    let tx_def = TxBuilder::new(kinds::ESCROW_COMPLETE, format!("escrow:complete:{order_id}"))
-        .reference("order", order_id)
-        .debit(AccountKey::escrow(order_id), amount)
-        .credit(AccountKey::earnings_pending(seller_id), amount)
-        .build()?;
+    let tx_def = TxBuilder::new(
+        kinds::ESCROW_COMPLETE,
+        format!("escrow:complete:{order_id}"),
+    )
+    .reference("order", order_id)
+    .debit(AccountKey::escrow(order_id), amount)
+    .credit(AccountKey::earnings_pending(seller_id), amount)
+    .build()?;
     let mut tx = db.begin().await?;
     let cfg = settings::load(&mut tx).await?;
     let outcome = post_or(&mut tx, &tx_def, |_| {
@@ -137,11 +140,14 @@ pub async fn refund_from_escrow(
     order_id: Uuid,
     amount: i64,
 ) -> AppResult<PostOutcome> {
-    let tx_def = TxBuilder::new(kinds::REFUND_FROM_ESCROW, format!("escrow:refund:{order_id}"))
-        .reference("order", order_id)
-        .debit(AccountKey::escrow(order_id), amount)
-        .credit(AccountKey::wallet_spendable(buyer_id), amount)
-        .build()?;
+    let tx_def = TxBuilder::new(
+        kinds::REFUND_FROM_ESCROW,
+        format!("escrow:refund:{order_id}"),
+    )
+    .reference("order", order_id)
+    .debit(AccountKey::escrow(order_id), amount)
+    .credit(AccountKey::wallet_spendable(buyer_id), amount)
+    .build()?;
     let mut tx = db.begin().await?;
     let outcome = post_or(&mut tx, &tx_def, |_| {
         AppError::conflict(

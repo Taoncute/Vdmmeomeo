@@ -115,7 +115,10 @@ async fn xoay_vong_refresh_token(pool: PgPool) {
     let r1 = refresh_with(&app, &s.refresh).await;
     assert_eq!(r1.status, StatusCode::OK);
     let new_refresh = refresh_cookie_from(&r1.headers).expect("cookie mới");
-    assert_ne!(new_refresh, s.refresh, "refresh token phải được đổi mỗi lần");
+    assert_ne!(
+        new_refresh, s.refresh,
+        "refresh token phải được đổi mỗi lần"
+    );
     let new_access = r1.body["access_token"].as_str().unwrap();
     assert_eq!(
         get(&app, "/api/v1/me", Some(new_access)).await.status,
@@ -350,24 +353,33 @@ async fn hang_doi_job(pool: PgPool) {
         .unwrap();
     // Cùng dedupe_key chỉ xếp được một job đang chờ.
     for _ in 0..3 {
-        server::jobs::enqueue(&pool, "noop", json!({}), Utc::now() + chrono::Duration::hours(1), Some("k"))
-            .await
-            .unwrap();
+        server::jobs::enqueue(
+            &pool,
+            "noop",
+            json!({}),
+            Utc::now() + chrono::Duration::hours(1),
+            Some("k"),
+        )
+        .await
+        .unwrap();
     }
-    let queued_k: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM jobs WHERE dedupe_key = 'k' AND status = 'queued'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let queued_k: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM jobs WHERE dedupe_key = 'k' AND status = 'queued'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(queued_k, 1);
 
     let n = server::jobs::run_due_jobs(&state).await.unwrap();
     assert_eq!(n, 2);
 
-    let noop: (String, i32) = sqlx::query_as("SELECT status, attempts FROM jobs WHERE kind = 'noop' AND dedupe_key IS NULL")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let noop: (String, i32) = sqlx::query_as(
+        "SELECT status, attempts FROM jobs WHERE kind = 'noop' AND dedupe_key IS NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(noop, ("done".to_string(), 1));
 
     let bad: (String, i32, Option<String>, bool) = sqlx::query_as(

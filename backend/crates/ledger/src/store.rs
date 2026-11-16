@@ -208,11 +208,10 @@ impl BooksReport {
 
 /// Đối soát: tổng toàn sổ, từng giao dịch, `balance` so với tổng `entries`, và ví âm.
 pub async fn verify_books(conn: &mut PgConnection) -> Result<BooksReport, LedgerError> {
-    let total = sqlx::query_scalar::<_, i64>(
-        "SELECT COALESCE(SUM(amount), 0)::bigint FROM ledger_entries",
-    )
-    .fetch_one(&mut *conn)
-    .await?;
+    let total =
+        sqlx::query_scalar::<_, i64>("SELECT COALESCE(SUM(amount), 0)::bigint FROM ledger_entries")
+            .fetch_one(&mut *conn)
+            .await?;
     let unbalanced_txs = sqlx::query_scalar::<_, Uuid>(
         "SELECT tx_id FROM ledger_entries GROUP BY tx_id HAVING SUM(amount) <> 0",
     )

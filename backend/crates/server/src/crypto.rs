@@ -22,7 +22,12 @@ impl KycCrypto {
     pub fn from_config(cfg: &Config) -> anyhow::Result<Self> {
         let mut keys = HashMap::new();
         let mut first: Option<String> = None;
-        for part in cfg.kyc_keys.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        for part in cfg
+            .kyc_keys
+            .split(',')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+        {
             let (id, b64) = part
                 .split_once(':')
                 .ok_or_else(|| anyhow!("KYC_KEYS phải có dạng id:base64"))?;

@@ -51,8 +51,8 @@ impl PaymentGateway for FakeGateway {
     }
 
     fn verify_webhook(&self, raw_body: &[u8]) -> Result<WebhookEvent, WebhookError> {
-        let w: FakeWebhook = serde_json::from_slice(raw_body)
-            .map_err(|e| WebhookError::Malformed(e.to_string()))?;
+        let w: FakeWebhook =
+            serde_json::from_slice(raw_body).map_err(|e| WebhookError::Malformed(e.to_string()))?;
         let msg = format!("{}:{}", w.order_code, w.amount);
         if !verify_hmac_hex(&self.secret, &msg, &w.signature) {
             return Err(WebhookError::InvalidSignature);

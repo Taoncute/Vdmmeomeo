@@ -157,8 +157,8 @@ impl PaymentGateway for PayOsGateway {
     }
 
     fn verify_webhook(&self, raw_body: &[u8]) -> Result<WebhookEvent, WebhookError> {
-        let payload: PayosWebhook = serde_json::from_slice(raw_body)
-            .map_err(|e| WebhookError::Malformed(e.to_string()))?;
+        let payload: PayosWebhook =
+            serde_json::from_slice(raw_body).map_err(|e| WebhookError::Malformed(e.to_string()))?;
         if !verify_hmac_hex(
             &self.checksum_key,
             &signing_string(&payload.data),
@@ -204,7 +204,8 @@ mod tests {
     /// Dữ liệu mẫu và chữ ký trong tài liệu PayOS (ví dụ PHP, đã kiểm lại bằng HMAC-SHA256 thật).
     /// Lưu ý: ví dụ JSON ở cùng trang ghi chữ ký khác (8d8640d8...) và không khớp với dữ liệu đi kèm;
     /// tài liệu tự mâu thuẫn ở điểm đó, ta bám theo ví dụ PHP.
-    const SAMPLE_SIGNATURE: &str = "412e915d2871504ed31be63c8f62a149a4410d34c4c42affc9006ef9917eaa03";
+    const SAMPLE_SIGNATURE: &str =
+        "412e915d2871504ed31be63c8f62a149a4410d34c4c42affc9006ef9917eaa03";
 
     fn sample_data() -> Map<String, Value> {
         let v = json!({

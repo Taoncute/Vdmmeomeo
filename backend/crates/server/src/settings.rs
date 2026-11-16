@@ -113,20 +113,23 @@ pub async fn update(
     }
     let mut tx = db.begin().await?;
     for (key, new) in &changes {
-        let old = sqlx::query_scalar::<_, Value>("SELECT value FROM settings WHERE key = $1 FOR UPDATE")
-            .bind(key)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(|| AppError::internal(format!("setting {key} không tồn tại")))?;
+        let old =
+            sqlx::query_scalar::<_, Value>("SELECT value FROM settings WHERE key = $1 FOR UPDATE")
+                .bind(key)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| AppError::internal(format!("setting {key} không tồn tại")))?;
         if old == *new {
             continue;
         }
-        sqlx::query("UPDATE settings SET value = $2, updated_by = $3, updated_at = now() WHERE key = $1")
-            .bind(key)
-            .bind(new)
-            .bind(actor)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "UPDATE settings SET value = $2, updated_by = $3, updated_at = now() WHERE key = $1",
+        )
+        .bind(key)
+        .bind(new)
+        .bind(actor)
+        .execute(&mut *tx)
+        .await?;
         audit::log(
             &mut tx,
             AuditEntry {

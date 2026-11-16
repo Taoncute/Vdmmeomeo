@@ -76,7 +76,15 @@ pub async fn create_stall_reminders(db: &PgPool) -> AppResult<usize> {
             vn_date(stall_until)
         );
         let mut conn = db.acquire().await?;
-        if create(&mut conn, owner_id, "stall_expiring", &body, Some(dedupe.as_str())).await? {
+        if create(
+            &mut conn,
+            owner_id,
+            "stall_expiring",
+            &body,
+            Some(dedupe.as_str()),
+        )
+        .await?
+        {
             created += 1;
         }
     }

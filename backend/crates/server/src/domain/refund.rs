@@ -86,7 +86,10 @@ pub async fn refund_deposit(
         &mut tx,
         user_id,
         "deposit_refunded",
-        &format!("Đã hoàn {} tiền nạp thừa về tài khoản ngân hàng của bạn.", format_vnd(amount)),
+        &format!(
+            "Đã hoàn {} tiền nạp thừa về tài khoản ngân hàng của bạn.",
+            format_vnd(amount)
+        ),
         Some(format!("deposit_refund:{idem}").as_str()),
     )
     .await?;

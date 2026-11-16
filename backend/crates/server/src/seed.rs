@@ -92,20 +92,35 @@ async fn credit(
 }
 
 /// Số dư mẫu ở từng loại ví, một gian hàng đang thuê và KYC đã duyệt cho người bán demo.
-pub async fn seed_wallets(
-    state: &AppState,
-    ids: &BTreeMap<String, Uuid>,
-) -> anyhow::Result<()> {
+pub async fn seed_wallets(state: &AppState, ids: &BTreeMap<String, Uuid>) -> anyhow::Result<()> {
     let buyer = ids["buyer@demo.local"];
     let seller = ids["seller@demo.local"];
     let mut tx = state.db.begin().await?;
 
-    credit(&mut tx, "buyer@demo.local", "spendable", AccountKey::wallet_spendable(buyer), 5_000_000)
-        .await?;
-    credit(&mut tx, "seller@demo.local", "spendable", AccountKey::wallet_spendable(seller), 1_000_000)
-        .await?;
-    credit(&mut tx, "seller@demo.local", "available", AccountKey::earnings_available(seller), 3_000_000)
-        .await?;
+    credit(
+        &mut tx,
+        "buyer@demo.local",
+        "spendable",
+        AccountKey::wallet_spendable(buyer),
+        5_000_000,
+    )
+    .await?;
+    credit(
+        &mut tx,
+        "seller@demo.local",
+        "spendable",
+        AccountKey::wallet_spendable(seller),
+        1_000_000,
+    )
+    .await?;
+    credit(
+        &mut tx,
+        "seller@demo.local",
+        "available",
+        AccountKey::earnings_available(seller),
+        3_000_000,
+    )
+    .await?;
     let pending_is_new = credit(
         &mut tx,
         "seller@demo.local",

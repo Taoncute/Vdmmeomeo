@@ -42,7 +42,11 @@ async fn db_tu_choi_giao_dich_tong_khac_0(pool: PgPool) {
     for bad in [
         vec![("platform_revenue", 100)],
         vec![("platform_revenue", 100), ("external", -50)],
-        vec![("platform_revenue", 100), ("external", -100), ("external", 1)],
+        vec![
+            ("platform_revenue", 100),
+            ("external", -100),
+            ("external", 1),
+        ],
     ] {
         let err = raw_tx(&pool, &bad)
             .await
@@ -74,7 +78,10 @@ async fn db_chan_sua_xoa_but_toan(pool: PgPool) {
     }
     // TRUNCATE bị chặn (bằng trigger, hoặc bằng khóa ngoại với bảng được tham chiếu).
     for sql in ["TRUNCATE ledger_entries", "TRUNCATE ledger_transactions"] {
-        assert!(sqlx::query(sql).execute(&pool).await.is_err(), "{sql} phải bị chặn");
+        assert!(
+            sqlx::query(sql).execute(&pool).await.is_err(),
+            "{sql} phải bị chặn"
+        );
     }
     assert_eq!(count(&pool, "SELECT count(*) FROM ledger_entries").await, 2);
     assert_books_clean(&pool).await;
@@ -112,7 +119,14 @@ async fn ledger_post_idempotent_va_khong_am(pool: PgPool) {
         .unwrap();
     let mut tx = pool.begin().await.unwrap();
     let r = ledger::post(&mut tx, &over).await;
-    assert!(matches!(r, Err(LedgerError::InsufficientFunds { balance: 100, needed: 150, .. })));
+    assert!(matches!(
+        r,
+        Err(LedgerError::InsufficientFunds {
+            balance: 100,
+            needed: 150,
+            ..
+        })
+    ));
     drop(tx);
     assert_eq!(balance(&pool, wallet).await, 100);
 
@@ -238,8 +252,9 @@ async fn run_sequence(pool: &PgPool, ops: &[Op]) {
                 let d = deposits::create(pool, users[*user], *amount, "fake")
                     .await
                     .unwrap();
-                let r = deposits::confirm(pool, d.id, Some(*amount), deposits::ConfirmSource::Webhook)
-                    .await;
+                let r =
+                    deposits::confirm(pool, d.id, Some(*amount), deposits::ConfirmSource::Webhook)
+                        .await;
                 expect_ok_or_business(r, "deposit", ops);
             }
             Op::Hold { order, amount } => {
@@ -251,7 +266,8 @@ async fn run_sequence(pool: &PgPool, ops: &[Op]) {
             }
             Op::Complete { order } => {
                 let amount = held.get(order).copied().unwrap_or(1);
-                let r = escrow::complete(pool, users[(*order + 1) % 4], orders[*order], amount).await;
+                let r =
+                    escrow::complete(pool, users[(*order + 1) % 4], orders[*order], amount).await;
                 expect_ok_or_business(r, "complete", ops);
             }
             Op::ReleaseDue => {
@@ -263,7 +279,8 @@ async fn run_sequence(pool: &PgPool, ops: &[Op]) {
             }
             Op::RefundEscrow { order } => {
                 let amount = held.get(order).copied().unwrap_or(1);
-                let r = escrow::refund_from_escrow(pool, users[*order], orders[*order], amount).await;
+                let r =
+                    escrow::refund_from_escrow(pool, users[*order], orders[*order], amount).await;
                 expect_ok_or_business(r, "refund_from_escrow", ops);
             }
             Op::RefundPending { order } => {
@@ -295,20 +312,40 @@ async fn run_sequence(pool: &PgPool, ops: &[Op]) {
                 let id = pending[pick % pending.len()];
                 let ctx = admin_ctx(admin);
                 if matches!(op, Op::ApproveWithdrawal { .. }) {
-                    expect_ok_or_business(withdrawals::approve(pool, ctx, id, "MGD-1").await, "approve", ops);
+                    expect_ok_or_business(
+                        withdrawals::approve(pool, ctx, id, "MGD-1").await,
+                        "approve",
+                        ops,
+                    );
                 } else {
-                    expect_ok_or_business(withdrawals::reject(pool, ctx, id, "không hợp lệ").await, "reject", ops);
+                    expect_ok_or_business(
+                        withdrawals::reject(pool, ctx, id, "không hợp lệ").await,
+                        "reject",
+                        ops,
+                    );
                 }
             }
             Op::Rent { user, earnings } => {
                 shop_seq += 1;
-                let source = if *earnings { Source::Earnings } else { Source::Spendable };
+                let source = if *earnings {
+                    Source::Earnings
+                } else {
+                    Source::Spendable
+                };
                 let name = format!("S{} {shop_seq}", &run[..8]);
                 let r = stall::rent(pool, users[*user], source, Some(name.as_str()), None).await;
                 expect_ok_or_business(r, "rent", ops);
             }
             Op::RefundDeposit { user, amount } => {
-                let r = refund::refund_deposit(pool, admin_ctx(admin), users[*user], *amount, "nạp thừa", None).await;
+                let r = refund::refund_deposit(
+                    pool,
+                    admin_ctx(admin),
+                    users[*user],
+                    *amount,
+                    "nạp thừa",
+                    None,
+                )
+                .await;
                 expect_ok_or_business(r, "refund_deposit", ops);
             }
         }
@@ -337,10 +374,11 @@ async fn property_so_cai_luon_can_bang(pool: PgPool) {
             report.is_clean(),
             "ca {case}: sổ cái lệch: {report:?}\nchuỗi thao tác: {ops:#?}"
         );
-        let sum_all: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(balance), 0)::bigint FROM account_balances")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let sum_all: i64 =
+            sqlx::query_scalar("SELECT COALESCE(SUM(balance), 0)::bigint FROM account_balances")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(sum_all, 0, "ca {case}: tổng mọi số dư phải bằng 0");
     }
 }

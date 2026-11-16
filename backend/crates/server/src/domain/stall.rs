@@ -126,10 +126,11 @@ async fn unique_slug(conn: &mut PgConnection, name: &str) -> AppResult<String> {
     let base = slugify(name);
     let mut candidate = base.clone();
     for n in 2..200 {
-        let taken = sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM shops WHERE slug = $1)")
-            .bind(&candidate)
-            .fetch_one(&mut *conn)
-            .await?;
+        let taken =
+            sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM shops WHERE slug = $1)")
+                .bind(&candidate)
+                .fetch_one(&mut *conn)
+                .await?;
         if !taken {
             return Ok(candidate);
         }
@@ -159,10 +160,7 @@ pub async fn shop_of_owner(db: &PgPool, owner_id: Uuid) -> AppResult<Option<Shop
     Ok(shop)
 }
 
-async fn find_rental_by_key(
-    conn: &mut PgConnection,
-    key: &str,
-) -> AppResult<Option<(Uuid, Uuid)>> {
+async fn find_rental_by_key(conn: &mut PgConnection, key: &str) -> AppResult<Option<(Uuid, Uuid)>> {
     let row = sqlx::query_as::<_, (Uuid, Uuid)>(
         "SELECT r.id, r.shop_id FROM stall_rentals r \
          JOIN ledger_transactions t ON t.id = r.ledger_tx_id WHERE t.idempotency_key = $1",
@@ -309,7 +307,11 @@ pub async fn rent(
         &mut tx,
         user_id,
         "stall_rented",
-        &format!("Đã thuê gian hàng {} ngày, hạn đến {}.", cfg.stall_days, notifications::vn_date(ends_at)),
+        &format!(
+            "Đã thuê gian hàng {} ngày, hạn đến {}.",
+            cfg.stall_days,
+            notifications::vn_date(ends_at)
+        ),
         Some(format!("rent:{rental_id}").as_str()),
     )
     .await?;
@@ -330,9 +332,9 @@ pub async fn update_profile(
     bio: Option<&str>,
     avatar_url: Option<&str>,
 ) -> AppResult<Shop> {
-    let shop = shop_of_owner(db, owner_id).await?.ok_or_else(|| {
-        AppError::not_found("Bạn chưa có gian hàng. Hãy thuê gian hàng trước.")
-    })?;
+    let shop = shop_of_owner(db, owner_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Bạn chưa có gian hàng. Hãy thuê gian hàng trước."))?;
     let mut new_bio = shop.bio.clone();
     let mut new_avatar = shop.avatar_url.clone();
     if let Some(b) = bio {
@@ -343,7 +345,11 @@ pub async fn update_profile(
                 "Mô tả gian hàng dài tối đa 1000 ký tự.",
             ));
         }
-        new_bio = if b.is_empty() { None } else { Some(b.to_string()) };
+        new_bio = if b.is_empty() {
+            None
+        } else {
+            Some(b.to_string())
+        };
     }
     if let Some(a) = avatar_url {
         let a = a.trim();
@@ -358,9 +364,8 @@ pub async fn update_profile(
             new_avatar = Some(a.to_string());
         }
     }
-    let sql = format!(
-        "UPDATE shops SET bio = $2, avatar_url = $3 WHERE id = $1 RETURNING {SHOP_COLS}"
-    );
+    let sql =
+        format!("UPDATE shops SET bio = $2, avatar_url = $3 WHERE id = $1 RETURNING {SHOP_COLS}");
     let updated = sqlx::query_as::<_, Shop>(&sql)
         .bind(shop.id)
         .bind(new_bio)

@@ -104,9 +104,8 @@ pub async fn find_by_order_code(db: &PgPool, order_code: i64) -> AppResult<Optio
 }
 
 pub async fn list_for_user(db: &PgPool, user_id: Uuid, limit: i64) -> AppResult<Vec<Deposit>> {
-    let sql = format!(
-        "SELECT {COLS} FROM deposits WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2"
-    );
+    let sql =
+        format!("SELECT {COLS} FROM deposits WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2");
     let rows = sqlx::query_as::<_, Deposit>(&sql)
         .bind(user_id)
         .bind(limit)

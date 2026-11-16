@@ -64,7 +64,10 @@ fn v1_routes() -> Router<AppState> {
             get(deposits::list_deposits).post(deposits::create_deposit),
         )
         .route("/webhooks/payos", post(deposits::payment_webhook))
-        .route("/withdrawals", get(withdrawals::list).post(withdrawals::create))
+        .route(
+            "/withdrawals",
+            get(withdrawals::list).post(withdrawals::create),
+        )
         .route("/withdrawals/preview", post(withdrawals::preview))
         .route("/stall/rent", post(stall::rent))
         .route("/shops/me", patch(stall::patch_my_shop))

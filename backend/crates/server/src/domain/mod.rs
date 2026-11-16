@@ -35,7 +35,9 @@ pub async fn require_admin(conn: &mut PgConnection, user_id: Uuid) -> AppResult<
     if is_admin {
         Ok(())
     } else {
-        Err(AppError::forbidden("Chỉ quản trị viên được thực hiện thao tác này."))
+        Err(AppError::forbidden(
+            "Chỉ quản trị viên được thực hiện thao tác này.",
+        ))
     }
 }
 

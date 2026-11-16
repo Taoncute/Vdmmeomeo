@@ -101,7 +101,12 @@ pub async fn list_withdrawals(
     let mut items = Vec::with_capacity(rows.len());
     for r in rows {
         // Admin cần số tài khoản đầy đủ để chuyển khoản, nên giải mã ở đây.
-        let kyc = match (&r.kyc_full_name, &r.kyc_bank_name, &r.kyc_account_enc, &r.kyc_key_id) {
+        let kyc = match (
+            &r.kyc_full_name,
+            &r.kyc_bank_name,
+            &r.kyc_account_enc,
+            &r.kyc_key_id,
+        ) {
             (Some(full_name), Some(bank_name), Some(enc), Some(key_id)) => {
                 let account_no = state.crypto.decrypt(key_id, enc)?;
                 Some(json!({
@@ -237,7 +242,9 @@ pub async fn refund_deposit(
         idem.as_deref(),
     )
     .await?;
-    Ok(Json(json!({ "tx_id": outcome.tx_id, "replayed": outcome.replayed })))
+    Ok(Json(
+        json!({ "tx_id": outcome.tx_id, "replayed": outcome.replayed }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]

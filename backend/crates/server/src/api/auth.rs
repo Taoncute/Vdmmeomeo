@@ -226,7 +226,16 @@ pub async fn refresh(State(state): State<AppState>, headers: HeaderMap) -> AppRe
     let hash = hash_refresh_token(&token);
 
     let mut tx = state.db.begin().await?;
-    let row = sqlx::query_as::<_, (Uuid, Uuid, Uuid, chrono::DateTime<Utc>, Option<chrono::DateTime<Utc>>)>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            Uuid,
+            chrono::DateTime<Utc>,
+            Option<chrono::DateTime<Utc>>,
+        ),
+    >(
         "SELECT id, user_id, family_id, expires_at, revoked_at FROM refresh_tokens \
          WHERE token_hash = $1 FOR UPDATE",
     )

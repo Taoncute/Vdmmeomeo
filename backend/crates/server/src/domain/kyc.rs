@@ -96,7 +96,18 @@ pub async fn submit(
 }
 
 pub async fn get(db: &PgPool, crypto: &KycCrypto, user_id: Uuid) -> AppResult<Option<KycStatus>> {
-    let row = sqlx::query_as::<_, (String, String, String, Vec<u8>, String, Option<String>, DateTime<Utc>)>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            Vec<u8>,
+            String,
+            Option<String>,
+            DateTime<Utc>,
+        ),
+    >(
         "SELECT status, full_name, bank_name, account_no_enc, key_id, reject_reason, submitted_at \
          FROM seller_kyc WHERE user_id = $1",
     )
@@ -205,12 +216,7 @@ pub async fn approve(db: &PgPool, ctx: AdminCtx<'_>, user_id: Uuid) -> AppResult
     review(db, ctx, user_id, true, None).await
 }
 
-pub async fn reject(
-    db: &PgPool,
-    ctx: AdminCtx<'_>,
-    user_id: Uuid,
-    reason: &str,
-) -> AppResult<()> {
+pub async fn reject(db: &PgPool, ctx: AdminCtx<'_>, user_id: Uuid, reason: &str) -> AppResult<()> {
     let reason = reason.trim();
     if reason.is_empty() || reason.chars().count() > 500 {
         return Err(AppError::bad_request(
@@ -239,6 +245,9 @@ mod tests {
         assert!(clean_account_no("12345a7890").is_err());
         assert!(clean_account_no(&"1".repeat(21)).is_err());
         assert!(clean_text("Họ tên", "A", 100).is_err());
-        assert_eq!(clean_text("Họ tên", "  Nguyễn Văn A ", 100).unwrap(), "Nguyễn Văn A");
+        assert_eq!(
+            clean_text("Họ tên", "  Nguyễn Văn A ", 100).unwrap(),
+            "Nguyễn Văn A"
+        );
     }
 }

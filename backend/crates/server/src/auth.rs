@@ -57,7 +57,11 @@ impl Role {
 }
 
 /// Cấp vai trò cho người dùng (idempotent).
-pub async fn grant_role(conn: &mut PgConnection, user_id: Uuid, role: Role) -> Result<(), sqlx::Error> {
+pub async fn grant_role(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+    role: Role,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO user_roles (user_id, role_id) \
          SELECT $1, id FROM roles WHERE name = $2 \
@@ -140,7 +144,9 @@ pub fn decode_access_token(cfg: &Config, token: &str) -> AppResult<Claims> {
         &validation,
     )
     .map(|data| data.claims)
-    .map_err(|_| AppError::unauthorized("Phiên đăng nhập hết hạn hoặc không hợp lệ. Hãy đăng nhập lại."))
+    .map_err(|_| {
+        AppError::unauthorized("Phiên đăng nhập hết hạn hoặc không hợp lệ. Hãy đăng nhập lại.")
+    })
 }
 
 // ---------- Refresh token ----------

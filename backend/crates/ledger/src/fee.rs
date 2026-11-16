@@ -38,11 +38,20 @@ mod tests {
 
     #[test]
     fn ca_co_dinh() {
-        assert_eq!((quote(1_000_000).fee, quote(1_000_000).net), (100_000, 900_000));
+        assert_eq!(
+            (quote(1_000_000).fee, quote(1_000_000).net),
+            (100_000, 900_000)
+        );
         // Lẻ đúng nửa đồng thì làm tròn lên.
-        assert_eq!((quote(1_000_005).fee, quote(1_000_005).net), (100_001, 900_004));
+        assert_eq!(
+            (quote(1_000_005).fee, quote(1_000_005).net),
+            (100_001, 900_004)
+        );
         // Dưới nửa thì làm tròn xuống.
-        assert_eq!((quote(1_000_004).fee, quote(1_000_004).net), (100_000, 900_004));
+        assert_eq!(
+            (quote(1_000_004).fee, quote(1_000_004).net),
+            (100_000, 900_004)
+        );
         assert_eq!((quote(0).fee, quote(0).net), (0, 0));
         assert_eq!((quote(4).fee, quote(4).net), (0, 4));
         assert_eq!((quote(5).fee, quote(5).net), (1, 4));

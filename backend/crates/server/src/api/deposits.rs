@@ -57,10 +57,7 @@ pub async fn list_deposits(
 
 /// Webhook của cổng thanh toán. Xác thực chữ ký trên thân request thô trước khi làm bất cứ điều gì.
 /// Gọi lặp thì không cộng tiền lần hai.
-pub async fn payment_webhook(
-    State(state): State<AppState>,
-    body: Bytes,
-) -> AppResult<Json<Value>> {
+pub async fn payment_webhook(State(state): State<AppState>, body: Bytes) -> AppResult<Json<Value>> {
     let event = match state.gateway.verify_webhook(&body) {
         Ok(event) => event,
         Err(WebhookError::InvalidSignature) => {
@@ -75,10 +72,14 @@ pub async fn payment_webhook(
             return Err(AppError::bad_request("malformed_webhook", msg));
         }
         Err(WebhookError::NotPaymentSuccess) => {
-            return Ok(Json(json!({ "ok": true, "ignored": "not_a_successful_payment" })));
+            return Ok(Json(
+                json!({ "ok": true, "ignored": "not_a_successful_payment" }),
+            ));
         }
         Err(WebhookError::Unsupported) => {
-            return Err(AppError::not_found("Cổng thanh toán hiện tại không nhận webhook."));
+            return Err(AppError::not_found(
+                "Cổng thanh toán hiện tại không nhận webhook.",
+            ));
         }
     };
     let Some(deposit_id) = deposits::find_by_order_code(&state.db, event.order_code).await? else {

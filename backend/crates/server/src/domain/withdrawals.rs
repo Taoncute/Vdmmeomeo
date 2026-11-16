@@ -333,7 +333,11 @@ pub async fn approve(
         &mut tx,
         w.user_id,
         "withdrawal_approved",
-        &format!("Lệnh rút {} đã được chuyển khoản, bạn nhận {}.", format_vnd(w.amount), format_vnd(w.net)),
+        &format!(
+            "Lệnh rút {} đã được chuyển khoản, bạn nhận {}.",
+            format_vnd(w.amount),
+            format_vnd(w.net)
+        ),
         Some(format!("withdrawal:{withdrawal_id}").as_str()),
     )
     .await?;
@@ -396,7 +400,10 @@ pub async fn reject(
         &mut tx,
         w.user_id,
         "withdrawal_rejected",
-        &format!("Lệnh rút {} bị từ chối: {reason}. Tiền đã trả về doanh thu của bạn.", format_vnd(w.amount)),
+        &format!(
+            "Lệnh rút {} bị từ chối: {reason}. Tiền đã trả về doanh thu của bạn.",
+            format_vnd(w.amount)
+        ),
         Some(format!("withdrawal:{withdrawal_id}").as_str()),
     )
     .await?;

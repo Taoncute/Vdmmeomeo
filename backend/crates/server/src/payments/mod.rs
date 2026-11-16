@@ -69,8 +69,7 @@ pub trait PaymentGateway: Send + Sync {
 }
 
 pub fn hmac_sha256_hex(key: &str, msg: &str) -> String {
-    let mut mac =
-        HmacSha256::new_from_slice(key.as_bytes()).expect("HMAC nhận khóa độ dài bất kỳ");
+    let mut mac = HmacSha256::new_from_slice(key.as_bytes()).expect("HMAC nhận khóa độ dài bất kỳ");
     mac.update(msg.as_bytes());
     hex::encode(mac.finalize().into_bytes())
 }
@@ -80,8 +79,7 @@ pub fn verify_hmac_hex(key: &str, msg: &str, signature_hex: &str) -> bool {
     let Ok(sig) = hex::decode(signature_hex.trim()) else {
         return false;
     };
-    let mut mac =
-        HmacSha256::new_from_slice(key.as_bytes()).expect("HMAC nhận khóa độ dài bất kỳ");
+    let mut mac = HmacSha256::new_from_slice(key.as_bytes()).expect("HMAC nhận khóa độ dài bất kỳ");
     mac.update(msg.as_bytes());
     mac.verify_slice(&sig).is_ok()
 }
