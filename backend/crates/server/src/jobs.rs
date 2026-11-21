@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
-use crate::domain::{escrow, notifications};
+use crate::domain::{escrow, notifications, orders};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -15,6 +15,7 @@ const MAX_ATTEMPTS: i32 = 5;
 
 /// Job lặp lại: (loại, chu kỳ tính bằng giây). Sau mỗi lần chạy, job kế tiếp được xếp lịch.
 pub const RECURRING: &[(&str, i64)] = &[
+    ("auto_complete_orders", 300),
     ("release_holds", 300),
     ("rent_reminders", 3600),
     ("ledger_reconcile", 3600),
@@ -51,6 +52,14 @@ pub async fn ensure_recurring(db: &PgPool) -> Result<(), sqlx::Error> {
 async fn dispatch(state: &AppState, kind: &str, _payload: &Value) -> AppResult<()> {
     match kind {
         "noop" => Ok(()),
+        // Tự hoàn tất đơn `paid` quá hạn `auto_complete_days` không có tranh chấp.
+        "auto_complete_orders" => {
+            let n = orders::auto_complete_due(&state.db, 500).await?;
+            if n > 0 {
+                tracing::info!(completed = n, "đã tự hoàn tất đơn hàng quá hạn");
+            }
+            Ok(())
+        }
         // Nhả doanh thu đang giữ đã đến hạn: earnings_pending -> earnings_available.
         "release_holds" => {
             let n = escrow::release_due(&state.db, 500).await?;

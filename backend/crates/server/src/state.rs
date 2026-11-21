@@ -10,6 +10,8 @@ use crate::payments::manual::ManualGateway;
 use crate::payments::payos::PayOsGateway;
 use crate::payments::PaymentGateway;
 use crate::ratelimit::RateLimiter;
+use crate::scanner::{DefaultScanner, FileScanner};
+use crate::storage::{build_storage, FileStorage};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -22,6 +24,8 @@ pub struct AppState {
     pub dummy_hash: Arc<String>,
     pub gateway: Arc<dyn PaymentGateway>,
     pub crypto: Arc<KycCrypto>,
+    pub storage: Arc<dyn FileStorage>,
+    pub scanner: Arc<dyn FileScanner>,
 }
 
 fn build_gateway(config: &Config) -> anyhow::Result<Arc<dyn PaymentGateway>> {
@@ -58,6 +62,9 @@ impl AppState {
         )
         .map_err(|e| anyhow::anyhow!("{e}"))?;
         let crypto = Arc::new(KycCrypto::from_config(&config)?);
+        let storage = build_storage(&config)?;
+        let scanner: Arc<dyn FileScanner> =
+            Arc::new(DefaultScanner::new(config.clamd_addr.clone()));
         Ok(Self {
             db,
             ip_limiter: Arc::new(RateLimiter::new(config.rate_limit_ip_per_min, window)),
@@ -66,6 +73,8 @@ impl AppState {
             dummy_hash: Arc::new(dummy_hash),
             gateway,
             crypto,
+            storage,
+            scanner,
             config: Arc::new(config),
         })
     }

@@ -308,3 +308,22 @@ impl FromRequestParts<AppState> for AdminUser {
         Ok(AdminUser(user))
     }
 }
+
+/// Extractor cho người kiểm duyệt (`reviewer`) hoặc quản trị viên (`admin`).
+pub struct ReviewerUser(pub AuthUser);
+
+#[async_trait]
+impl FromRequestParts<AppState> for ReviewerUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, AppError> {
+        let user = AuthUser::from_request_parts(parts, state).await?;
+        if user.has_role(Role::Reviewer) || user.has_role(Role::Admin) {
+            Ok(ReviewerUser(user))
+        } else {
+            Err(AppError::forbidden(
+                "Chỉ người kiểm duyệt hoặc quản trị viên được thực hiện thao tác này.",
+            ))
+        }
+    }
+}

@@ -365,7 +365,7 @@ async fn job_nen_chay_qua_hang_doi(pool: PgPool) {
     server::jobs::ensure_recurring(&pool).await.unwrap();
     assert_eq!(
         count(&pool, "SELECT count(*) FROM jobs WHERE status = 'queued'").await,
-        3
+        4
     );
 }
 

@@ -94,3 +94,17 @@ Khi chạy sau proxy (Fly, Cloudflare) đặt `TRUST_PROXY=true` để rate limi
 - `shops.name_key` (tên chữ thường theo Unicode) đảm bảo tên gian hàng duy nhất không phân biệt hoa thường, thay cho `citext`.
 - Refresh token chỉ qua cookie ở phase 1; chế độ lưu qua `platform.ts` (Tauri) để phase 7.
 - `max_upload_mb`, `download_limit`, `file_ext_allowlist` chưa seed vào `settings` vì tài liệu chưa nêu giá trị; phase 3 sẽ thêm khi chủ dự án chốt.
+
+## Phase 3: sản phẩm, duyệt thủ công, đơn hàng qua escrow, giao file
+
+- Migration `0003_products_orders.sql` bổ sung `max_upload_mb = 100`, `download_limit = 5`, `file_ext_allowlist = ["zip","rar","7z","py","js","json","pdf","md","txt"]` vào `settings`, và các bảng `categories`, `products`, `product_versions`, `product_files`, `product_media`, `review_reports`, `orders`, `order_items`, `download_logs`, `disputes`, `reviews`.
+- Lưu trữ tệp qua trait `FileStorage` (`STORAGE_BACKEND=local` dùng signed token HMAC-SHA256 TTL 120s cho dev/test; `STORAGE_BACKEND=s3` dùng AWS SigV4 cho Cloudflare R2/S3).
+- Quét tự động qua trait `FileScanner`: luôn quét chuỗi đáng ngờ và tùy chọn quét ClamAV qua `CLAMD_ADDR` (bật container bằng `docker compose --profile scanner up -d clamav`).
+- Chạy kiểm tra đầy đủ ở máy local:
+  ```bash
+  docker compose up -d postgres
+  cd backend
+  cargo fmt --check
+  cargo clippy --all-targets -- -D warnings
+  DATABASE_URL=postgres://postgres:postgres@localhost:5432/cho_cong_dong cargo test
+  ```

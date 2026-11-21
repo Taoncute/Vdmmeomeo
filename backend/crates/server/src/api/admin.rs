@@ -286,3 +286,74 @@ pub async fn audit_log(
     .await?;
     Ok(Json(json!({ "audit_log": rows })))
 }
+
+// ---------- Phase 3: tranh chấp và gỡ sản phẩm ----------
+
+pub async fn list_disputes(
+    State(state): State<AppState>,
+    _admin: AdminUser,
+    Query(q): Query<ListQuery>,
+) -> AppResult<Json<Value>> {
+    let status = list_status(&q, &["open", "resolved"])?;
+    let rows =
+        crate::domain::orders::list_disputes_admin(&state.db, status, list_limit(&q)).await?;
+    Ok(Json(json!({ "disputes": rows })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResolveDisputeRequest {
+    pub resolution: String,
+    pub note: String,
+}
+
+pub async fn resolve_dispute(
+    State(state): State<AppState>,
+    AdminUser(admin): AdminUser,
+    ClientIp(ip): ClientIp,
+    Path(dispute_id): Path<Uuid>,
+    Json(req): Json<ResolveDisputeRequest>,
+) -> AppResult<Json<crate::domain::orders::Dispute>> {
+    let res =
+        crate::domain::orders::DisputeResolution::parse(&req.resolution).ok_or_else(|| {
+            AppError::bad_request(
+                "invalid_resolution",
+                "resolution phải là 'refund' hoặc 'release'.",
+            )
+        })?;
+    let ctx = AdminCtx {
+        admin_id: admin.id,
+        ip: &ip,
+    };
+    let dispute =
+        crate::domain::orders::resolve_dispute(&state.db, ctx, dispute_id, res, &req.note).await?;
+    Ok(Json(dispute))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TakedownRequest {
+    pub reason: String,
+    #[serde(default)]
+    pub refund_eligible: bool,
+}
+
+pub async fn takedown_product(
+    State(state): State<AppState>,
+    AdminUser(admin): AdminUser,
+    ClientIp(ip): ClientIp,
+    Path(product_id): Path<Uuid>,
+    Json(req): Json<TakedownRequest>,
+) -> AppResult<Json<crate::domain::products::TakedownResult>> {
+    let ctx = AdminCtx {
+        admin_id: admin.id,
+        ip: &ip,
+    };
+    let res = crate::domain::products::takedown_product(
+        &state.db,
+        ctx,
+        product_id,
+        &req.reason,
+        req.refund_eligible,
+    )
+    .await?;
+    Ok(Json(res))
+}

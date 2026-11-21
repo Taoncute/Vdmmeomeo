@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use axum::extract::DefaultBodyLimit;
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method};
 use axum::middleware;
 use axum::routing::{get, patch, post};
@@ -19,6 +20,9 @@ pub mod health;
 pub mod kyc;
 pub mod me;
 pub mod notifications;
+pub mod orders;
+pub mod products;
+pub mod review;
 pub mod stall;
 pub mod wallet;
 pub mod withdrawals;
@@ -48,6 +52,11 @@ pub fn idempotency_key(headers: &HeaderMap) -> AppResult<Option<String>> {
 }
 
 fn v1_routes() -> Router<AppState> {
+    // Cho phép multipart vượt mức mặc định 2MB của Axum; giới hạn thực tế lấy từ settings.max_upload_mb.
+    let upload_route = Router::new()
+        .route("/versions/:id/files", post(products::upload_version_file))
+        .layer(DefaultBodyLimit::max(110 * 1024 * 1024));
+
     Router::new()
         .route("/healthz", get(health::healthz))
         .route("/readyz", get(health::readyz))
@@ -72,6 +81,46 @@ fn v1_routes() -> Router<AppState> {
         .route("/stall/rent", post(stall::rent))
         .route("/shops/me", patch(stall::patch_my_shop))
         .route("/notifications", get(notifications::list))
+        // Phase 3: danh mục, sản phẩm, phiên bản, đánh giá
+        .route("/categories", get(products::list_categories))
+        .route(
+            "/products",
+            get(products::list_products).post(products::create_product),
+        )
+        .route(
+            "/products/:id",
+            get(products::get_product).patch(products::update_product),
+        )
+        .route(
+            "/products/:id/reviews",
+            get(products::list_reviews).post(products::create_review),
+        )
+        .route("/products/:id/versions", post(products::create_version))
+        .route("/shops/:id", get(products::get_shop))
+        .route("/seller/products", get(products::list_seller_products))
+        .route("/versions/:id/submit", post(products::submit_version))
+        // Phase 3: hàng chờ kiểm duyệt (reviewer/admin)
+        .route("/review/queue", get(review::list_queue))
+        .route("/review/versions/:id/claim", post(review::claim_version))
+        .route(
+            "/review/versions/:id/checklist",
+            post(review::submit_checklist),
+        )
+        .route(
+            "/review/versions/:id/decision",
+            post(review::decide_version),
+        )
+        // Phase 3: đơn hàng, giao file signed URL, tranh chấp
+        .route(
+            "/orders",
+            get(orders::list_orders).post(orders::create_order),
+        )
+        .route("/orders/:id", get(orders::get_order))
+        .route("/orders/:id/confirm", post(orders::confirm_order))
+        .route("/orders/:id/downloads", post(orders::request_download))
+        .route("/orders/:id/disputes", post(orders::open_dispute))
+        .route("/downloads/:token", get(orders::download_by_token))
+        // Admin
         .route(
             "/admin/settings",
             get(admin::get_settings).patch(admin::patch_settings),
@@ -94,7 +143,14 @@ fn v1_routes() -> Router<AppState> {
             "/admin/users/:id/refund-deposit",
             post(admin::refund_deposit),
         )
+        .route("/admin/disputes", get(admin::list_disputes))
+        .route("/admin/disputes/:id/resolve", post(admin::resolve_dispute))
+        .route(
+            "/admin/products/:id/takedown",
+            post(admin::takedown_product),
+        )
         .route("/admin/audit-log", get(admin::audit_log))
+        .merge(upload_route)
 }
 
 pub fn router(state: AppState) -> Router {

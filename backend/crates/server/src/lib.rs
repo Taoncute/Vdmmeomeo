@@ -8,9 +8,11 @@ pub mod error;
 pub mod jobs;
 pub mod payments;
 pub mod ratelimit;
+pub mod scanner;
 pub mod seed;
 pub mod settings;
 pub mod state;
+pub mod storage;
 pub mod util;
 
 /// Toàn bộ migration, nhúng vào binary và dùng chung cho test (`#[sqlx::test]`).

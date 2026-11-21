@@ -32,6 +32,17 @@ pub struct Config {
     /// Khóa mã hóa KYC: `id:base64(32 byte)`, nhiều khóa cách nhau bằng dấu phẩy.
     pub kyc_keys: String,
     pub kyc_active_key: String,
+    /// Phase 3: lưu trữ tệp (`local` | `s3`) và quét virus ClamAV.
+    pub storage_backend: String,
+    pub storage_local_dir: String,
+    pub storage_download_secret: String,
+    pub public_base_url: String,
+    pub s3_endpoint: String,
+    pub s3_region: String,
+    pub s3_bucket: String,
+    pub s3_access_key: String,
+    pub s3_secret_key: String,
+    pub clamd_addr: String,
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -93,11 +104,25 @@ impl Config {
             manual_account_name: env_or("MANUAL_ACCOUNT_NAME", "CHU SAN (CHUA CAU HINH)"),
             kyc_keys: env_or("KYC_KEYS", ""),
             kyc_active_key: env_or("KYC_ACTIVE_KEY", ""),
+            storage_backend: env_or("STORAGE_BACKEND", "local"),
+            storage_local_dir: env_or("STORAGE_LOCAL_DIR", "./data/uploads"),
+            storage_download_secret: env_or("STORAGE_DOWNLOAD_SECRET", ""),
+            public_base_url: env_or("PUBLIC_BASE_URL", "http://localhost:8080"),
+            s3_endpoint: env_or("S3_ENDPOINT", ""),
+            s3_region: env_or("S3_REGION", "auto"),
+            s3_bucket: env_or("S3_BUCKET", ""),
+            s3_access_key: env_or("S3_ACCESS_KEY", ""),
+            s3_secret_key: env_or("S3_SECRET_KEY", ""),
+            clamd_addr: env_or("CLAMD_ADDR", ""),
         })
     }
 
-    /// Cấu hình cho test: giới hạn tốc độ rất cao, argon2 nhẹ để test chạy nhanh.
+    /// Cấu hình cho test: giới hạn tốc độ rất cao, argon2 nhẹ, thư mục lưu tệp tạm riêng từng test.
     pub fn for_tests() -> Self {
+        let test_dir = std::env::temp_dir()
+            .join(format!("cho-cong-dong-test-{}", uuid::Uuid::new_v4()))
+            .to_string_lossy()
+            .to_string();
         Self {
             app_env: "test".to_string(),
             database_url: String::new(),
@@ -126,6 +151,16 @@ impl Config {
             manual_account_name: "CHU SAN THU".to_string(),
             kyc_keys: String::new(),
             kyc_active_key: String::new(),
+            storage_backend: "local".to_string(),
+            storage_local_dir: test_dir,
+            storage_download_secret: "test-download-secret-0123456789abcdef".to_string(),
+            public_base_url: "http://localhost:8080".to_string(),
+            s3_endpoint: String::new(),
+            s3_region: "auto".to_string(),
+            s3_bucket: String::new(),
+            s3_access_key: String::new(),
+            s3_secret_key: String::new(),
+            clamd_addr: String::new(),
         }
     }
 }

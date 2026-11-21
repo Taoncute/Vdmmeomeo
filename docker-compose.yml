@@ -16,5 +16,12 @@ services:
       timeout: 5s
       retries: 10
 
+  clamav:
+    image: clamav/clamav:stable
+    profiles: ["scanner"]
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+
 volumes:
   pgdata:

@@ -16,8 +16,11 @@ const INT_KEYS: &[(&str, i64, i64)] = &[
     ("withdraw_fee_bps", 0, 10_000),
     ("hold_days", 0, 365),
     ("auto_complete_days", 0, 365),
+    ("max_upload_mb", 1, 2048),
+    ("download_limit", 1, 1000),
 ];
 const BOOL_KEYS: &[&str] = &["auto_approve_trusted"];
+const EXT_LIST_KEY: &str = "file_ext_allowlist";
 
 /// Các tham số cấu hình có kiểu, đọc từ bảng `settings`.
 #[derive(Debug, Clone, Serialize)]
@@ -29,6 +32,9 @@ pub struct Settings {
     pub hold_days: i64,
     pub auto_complete_days: i64,
     pub auto_approve_trusted: bool,
+    pub max_upload_mb: i64,
+    pub download_limit: i64,
+    pub file_ext_allowlist: Vec<String>,
 }
 
 impl Settings {
@@ -43,6 +49,17 @@ impl Settings {
                 .and_then(Value::as_bool)
                 .ok_or_else(|| AppError::internal(format!("setting {key} thiếu hoặc sai kiểu")))
         };
+        let ext_list = map
+            .get(EXT_LIST_KEY)
+            .and_then(Value::as_array)
+            .and_then(|arr| {
+                arr.iter()
+                    .map(|v| v.as_str().map(|s| s.to_ascii_lowercase()))
+                    .collect::<Option<Vec<String>>>()
+            })
+            .ok_or_else(|| {
+                AppError::internal(format!("setting {EXT_LIST_KEY} thiếu hoặc sai kiểu"))
+            })?;
         Ok(Self {
             stall_price: int("stall_price")?,
             stall_days: int("stall_days")?,
@@ -51,6 +68,9 @@ impl Settings {
             hold_days: int("hold_days")?,
             auto_complete_days: int("auto_complete_days")?,
             auto_approve_trusted: boolean("auto_approve_trusted")?,
+            max_upload_mb: int("max_upload_mb")?,
+            download_limit: int("download_limit")?,
+            file_ext_allowlist: ext_list,
         })
     }
 }
@@ -88,6 +108,42 @@ pub fn validate_setting(key: &str, value: &Value) -> AppResult<()> {
             "invalid_setting",
             format!("{key} phải là true hoặc false"),
         ));
+    }
+    if key == EXT_LIST_KEY {
+        let arr = value.as_array().ok_or_else(|| {
+            AppError::bad_request(
+                "invalid_setting",
+                format!("{key} phải là mảng các đuôi tệp"),
+            )
+        })?;
+        if arr.is_empty() || arr.len() > 50 {
+            return Err(AppError::bad_request(
+                "invalid_setting",
+                format!("{key} phải có từ 1 đến 50 đuôi tệp"),
+            ));
+        }
+        for item in arr {
+            let ext = item.as_str().ok_or_else(|| {
+                AppError::bad_request(
+                    "invalid_setting",
+                    format!("Mỗi phần tử trong {key} phải là chuỗi"),
+                )
+            })?;
+            let valid = !ext.is_empty()
+                && ext.len() <= 16
+                && ext
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+            if !valid {
+                return Err(AppError::bad_request(
+                    "invalid_setting",
+                    format!(
+                        "Đuôi tệp '{ext}' trong {key} không hợp lệ (chỉ chữ thường a-z và số 0-9)"
+                    ),
+                ));
+            }
+        }
+        return Ok(());
     }
     Err(AppError::bad_request(
         "unknown_setting",

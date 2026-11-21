@@ -2,8 +2,9 @@
 //! `wallet_spendable` -> `escrow` -> `earnings_pending` -> `earnings_available`,
 //! cùng hai đường hoàn tiền về ví người mua.
 
+use chrono::{DateTime, Utc};
 use ledger::{kinds, AccountKey, LedgerError, PostOutcome, TxBuilder};
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 use super::{lock_user, post_or};
@@ -11,9 +12,9 @@ use crate::error::{AppError, AppResult};
 use crate::settings;
 use crate::util::format_vnd;
 
-/// Người mua trả tiền vào escrow của đơn hàng.
-pub async fn hold(
-    db: &PgPool,
+/// Ghi bút toán giữ tiền vào escrow trong transaction hiện có.
+pub async fn hold_in_tx(
+    conn: &mut PgConnection,
     buyer_id: Uuid,
     order_id: Uuid,
     amount: i64,
@@ -23,9 +24,7 @@ pub async fn hold(
         .debit(AccountKey::wallet_spendable(buyer_id), amount)
         .credit(AccountKey::escrow(order_id), amount)
         .build()?;
-    let mut tx = db.begin().await?;
-    lock_user(&mut tx, buyer_id).await?;
-    let outcome = post_or(&mut tx, &tx_def, |balance| {
+    post_or(conn, &tx_def, |balance| {
         AppError::unprocessable(
             "insufficient_funds",
             format!(
@@ -35,9 +34,64 @@ pub async fn hold(
             ),
         )
     })
-    .await?;
+    .await
+}
+
+/// Người mua trả tiền vào escrow của đơn hàng.
+pub async fn hold(
+    db: &PgPool,
+    buyer_id: Uuid,
+    order_id: Uuid,
+    amount: i64,
+) -> AppResult<PostOutcome> {
+    let mut tx = db.begin().await?;
+    lock_user(&mut tx, buyer_id).await?;
+    let outcome = hold_in_tx(&mut tx, buyer_id, order_id, amount).await?;
     tx.commit().await?;
     Ok(outcome)
+}
+
+/// Chuyển tiền từ escrow sang `earnings_pending` và tạo `earnings_holds` trong transaction hiện có.
+/// Trả về `(outcome, release_at)` nếu giao dịch mới được ghi.
+pub async fn complete_in_tx(
+    conn: &mut PgConnection,
+    seller_id: Uuid,
+    order_id: Uuid,
+    amount: i64,
+) -> AppResult<(PostOutcome, Option<DateTime<Utc>>)> {
+    let tx_def = TxBuilder::new(
+        kinds::ESCROW_COMPLETE,
+        format!("escrow:complete:{order_id}"),
+    )
+    .reference("order", order_id)
+    .debit(AccountKey::escrow(order_id), amount)
+    .credit(AccountKey::earnings_pending(seller_id), amount)
+    .build()?;
+    let cfg = settings::load(conn).await?;
+    let outcome = post_or(conn, &tx_def, |_| {
+        AppError::conflict(
+            "escrow_empty",
+            "Escrow của đơn hàng này không còn đủ tiền (đã hoàn tiền hoặc đã chốt).",
+        )
+    })
+    .await?;
+    let release_at = if outcome.is_new() {
+        let ts = sqlx::query_scalar::<_, DateTime<Utc>>(
+            "INSERT INTO earnings_holds (seller_id, order_ref, amount, release_at) \
+             VALUES ($1, $2, $3, now() + ($4::bigint * 86400 * interval '1 second')) \
+             RETURNING release_at",
+        )
+        .bind(seller_id)
+        .bind(order_id)
+        .bind(amount)
+        .bind(cfg.hold_days)
+        .fetch_one(conn)
+        .await?;
+        Some(ts)
+    } else {
+        None
+    };
+    Ok((outcome, release_at))
 }
 
 /// Đơn hoàn tất: tiền từ escrow sang `earnings_pending` của người bán và bị giữ `hold_days` ngày.
@@ -47,35 +101,8 @@ pub async fn complete(
     order_id: Uuid,
     amount: i64,
 ) -> AppResult<PostOutcome> {
-    let tx_def = TxBuilder::new(
-        kinds::ESCROW_COMPLETE,
-        format!("escrow:complete:{order_id}"),
-    )
-    .reference("order", order_id)
-    .debit(AccountKey::escrow(order_id), amount)
-    .credit(AccountKey::earnings_pending(seller_id), amount)
-    .build()?;
     let mut tx = db.begin().await?;
-    let cfg = settings::load(&mut tx).await?;
-    let outcome = post_or(&mut tx, &tx_def, |_| {
-        AppError::conflict(
-            "escrow_empty",
-            "Escrow của đơn hàng này không còn đủ tiền (đã hoàn tiền hoặc đã chốt).",
-        )
-    })
-    .await?;
-    if outcome.is_new() {
-        sqlx::query(
-            "INSERT INTO earnings_holds (seller_id, order_ref, amount, release_at) \
-             VALUES ($1, $2, $3, now() + ($4::bigint * 86400 * interval '1 second'))",
-        )
-        .bind(seller_id)
-        .bind(order_id)
-        .bind(amount)
-        .bind(cfg.hold_days)
-        .execute(&mut *tx)
-        .await?;
-    }
+    let (outcome, _) = complete_in_tx(&mut tx, seller_id, order_id, amount).await?;
     tx.commit().await?;
     Ok(outcome)
 }
@@ -83,7 +110,7 @@ pub async fn complete(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReleaseOutcome {
     Released,
-    /// Khoản giữ đã được nhả hoặc đã hoàn lại trước đó.
+    /// Khoản giữ đã được nhả, đóng băng do tranh chấp hoặc đã hoàn lại trước đó.
     NotPending,
 }
 
@@ -133,9 +160,9 @@ pub async fn release_due(db: &PgPool, limit: i64) -> AppResult<usize> {
     Ok(released)
 }
 
-/// Hoàn tiền khi tiền còn ở escrow: `escrow` -> `wallet_spendable` của người mua.
-pub async fn refund_from_escrow(
-    db: &PgPool,
+/// Hoàn tiền từ escrow trong transaction hiện có.
+pub async fn refund_from_escrow_in_tx(
+    conn: &mut PgConnection,
     buyer_id: Uuid,
     order_id: Uuid,
     amount: i64,
@@ -148,33 +175,42 @@ pub async fn refund_from_escrow(
     .debit(AccountKey::escrow(order_id), amount)
     .credit(AccountKey::wallet_spendable(buyer_id), amount)
     .build()?;
-    let mut tx = db.begin().await?;
-    let outcome = post_or(&mut tx, &tx_def, |_| {
+    post_or(conn, &tx_def, |_| {
         AppError::conflict(
             "refund_not_possible",
             "Tiền không còn ở escrow của đơn này nên không hoàn tự động được.",
         )
     })
-    .await?;
-    tx.commit().await?;
-    Ok(outcome)
+    .await
 }
 
-/// Hoàn tiền khi tiền đang ở `earnings_pending`: về ví người mua và đánh dấu khoản giữ đã hoàn.
-/// Tiền đã sang `earnings_available` thì từ chối: phải xử lý bằng tay (công nợ người bán, phase sau).
-pub async fn refund_from_pending(
+/// Hoàn tiền khi tiền còn ở escrow: `escrow` -> `wallet_spendable` của người mua.
+pub async fn refund_from_escrow(
     db: &PgPool,
-    seller_id: Uuid,
     buyer_id: Uuid,
     order_id: Uuid,
     amount: i64,
 ) -> AppResult<PostOutcome> {
     let mut tx = db.begin().await?;
+    let outcome = refund_from_escrow_in_tx(&mut tx, buyer_id, order_id, amount).await?;
+    tx.commit().await?;
+    Ok(outcome)
+}
+
+/// Hoàn tiền khi tiền đang ở `earnings_pending` (hoặc đang đóng băng `frozen` do tranh chấp)
+/// trong transaction hiện có.
+pub async fn refund_from_pending_in_tx(
+    conn: &mut PgConnection,
+    seller_id: Uuid,
+    buyer_id: Uuid,
+    order_id: Uuid,
+    amount: i64,
+) -> AppResult<PostOutcome> {
     let (hold_id, hold_amount, status) = sqlx::query_as::<_, (Uuid, i64, String)>(
         "SELECT id, amount, status FROM earnings_holds WHERE order_ref = $1 FOR UPDATE",
     )
     .bind(order_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut *conn)
     .await?
     .ok_or_else(|| {
         AppError::conflict(
@@ -182,7 +218,7 @@ pub async fn refund_from_pending(
             "Đơn hàng này chưa có khoản doanh thu đang giữ.",
         )
     })?;
-    if status != "pending" {
+    if status != "pending" && status != "frozen" {
         return Err(AppError::conflict(
             "refund_after_release",
             "Tiền đã chuyển sang doanh thu rút được (hoặc đã hoàn), không hoàn tự động được.",
@@ -202,7 +238,7 @@ pub async fn refund_from_pending(
     .debit(AccountKey::earnings_pending(seller_id), amount)
     .credit(AccountKey::wallet_spendable(buyer_id), amount)
     .build()?;
-    let outcome = match ledger::post(&mut tx, &tx_def).await {
+    let outcome = match ledger::post(conn, &tx_def).await {
         Ok(o) => o,
         Err(LedgerError::InsufficientFunds { .. }) => {
             return Err(AppError::conflict(
@@ -214,8 +250,22 @@ pub async fn refund_from_pending(
     };
     sqlx::query("UPDATE earnings_holds SET status = 'refunded' WHERE id = $1")
         .bind(hold_id)
-        .execute(&mut *tx)
+        .execute(conn)
         .await?;
+    Ok(outcome)
+}
+
+/// Hoàn tiền khi tiền đang ở `earnings_pending`: về ví người mua và đánh dấu khoản giữ đã hoàn.
+/// Tiền đã sang `earnings_available` thì từ chối: phải xử lý bằng tay (công nợ người bán, phase sau).
+pub async fn refund_from_pending(
+    db: &PgPool,
+    seller_id: Uuid,
+    buyer_id: Uuid,
+    order_id: Uuid,
+    amount: i64,
+) -> AppResult<PostOutcome> {
+    let mut tx = db.begin().await?;
+    let outcome = refund_from_pending_in_tx(&mut tx, seller_id, buyer_id, order_id, amount).await?;
     tx.commit().await?;
     Ok(outcome)
 }
